@@ -4,18 +4,24 @@ import InspirationCard from './InspirationCard';
 
 interface InspirationGridProps {
   websites: SavedWebsite[];
+  onDelete: (id: string) => void;
+  projectId?: string;
 }
 
-function InspirationGrid({ websites }: InspirationGridProps) {
+function InspirationGrid({ websites, onDelete, projectId }: InspirationGridProps) {
   const navigate = useNavigate();
 
   const handleCardClick = (id: string) => {
-    navigate(`/detail/${id}`);
+    if (projectId) {
+      navigate(`/project/${projectId}/detail/${id}`);
+    } else {
+      navigate(`/detail/${id}`);
+    }
   };
 
   if (websites.length === 0) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-200 rounded-full mb-4">
             <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -30,13 +36,14 @@ function InspirationGrid({ websites }: InspirationGridProps) {
   }
 
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {websites.map((website) => (
           <InspirationCard
             key={website.id}
             website={website}
             onClick={() => handleCardClick(website.id)}
+            onDelete={() => onDelete(website.id)}
           />
         ))}
       </div>

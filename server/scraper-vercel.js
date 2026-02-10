@@ -1,7 +1,7 @@
-import puppeteer from 'puppeteer';
+import puppeteerCore from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { nanoid } from 'nanoid';
-import fs from 'fs/promises';
-import path from 'path';
+import { put } from '@vercel/blob';
 
 /**
  * Categorize colors into base, primary, accent, and other
@@ -27,21 +27,16 @@ function categorizeColors(colors) {
     };
   });
   
-  // Sort by usage/importance heuristics
   colorData.forEach((color, index) => {
-    // Base colors: low saturation (grays, blacks, whites)
     if (color.saturation < 0.2 || color.lightness > 0.9 || color.lightness < 0.15) {
       categories.base.push(color.hex);
     }
-    // Primary: first 2 most saturated colors with medium lightness
     else if (categories.primary.length < 2 && color.saturation > 0.4 && color.lightness > 0.3 && color.lightness < 0.7) {
       categories.primary.push(color.hex);
     }
-    // Accent: bright, highly saturated colors
     else if (categories.accent.length < 2 && color.saturation > 0.5 && color.brightness > 0.6) {
       categories.accent.push(color.hex);
     }
-    // Everything else
     else {
       categories.other.push(color.hex);
     }
@@ -75,7 +70,7 @@ function getBrightness(rgb) {
 }
 
 /**
- * Scrape a website and extract design information
+ * Scrape a website and extract design information (Vercel-compatible)
  * @param {string} url - The URL to scrape
  * @param {string[]} categories - The categories of the website
  * @returns {Promise<Object>} Scraped website data
@@ -85,9 +80,19 @@ export async function scrapeWebsite(url, categories = ['Other']) {
   
   try {
     console.log('Launching browser...');
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    
+    // Use chrome-aws-lambda for Vercel deployment
+    const executablePath = process.env.VERCEL 
+      ? await chromium.executablePath()
+      : process.env.PUPPETEER_EXECUTABLE_PATH || 
+        '/usr/bin/chromium-browser' ||
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    
+    browser = await puppeteerCore.launch({
+      args: process.env.VERCEL ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless || true,
     });
     
     const page = await browser.newPage();
@@ -95,7 +100,7 @@ export async function scrapeWebsite(url, categories = ['Other']) {
     
     console.log(`Navigating to ${url}...`);
     await page.goto(url, { 
-      waitUntil: 'networkidle0', // Wait until network is completely idle
+      waitUntil: 'networkidle0',
       timeout: 60000 
     });
     
@@ -104,7 +109,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
     // Wait for common loading indicators to disappear
     try {
       await page.waitForFunction(() => {
-        // Check for common loading indicators
         const loadingSelectors = [
           '.loading',
           '.loader',
@@ -116,7 +120,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
           '[id*="spinner"]'
         ];
         
-        // Check if any loading elements are visible
         for (const selector of loadingSelectors) {
           const elements = document.querySelectorAll(selector);
           for (const el of elements) {
@@ -125,44 +128,39 @@ export async function scrapeWebsite(url, categories = ['Other']) {
                 style.visibility !== 'hidden' && 
                 style.opacity !== '0' &&
                 el.offsetParent !== null) {
-              return false; // Still loading
+              return false;
             }
           }
         }
         
-        // Check if body has loaded class or similar
         const body = document.body;
         const html = document.documentElement;
         
-        // Common patterns that indicate loading is complete
         if (body.classList.contains('loaded') || 
             body.classList.contains('page-loaded') ||
             html.classList.contains('loaded')) {
           return true;
         }
         
-        // If no loading indicators found, consider it loaded
         return true;
-      }, { timeout: 10000 }); // Wait max 10 seconds for loading indicators
+      }, { timeout: 10000 });
       
       console.log('Loading indicators cleared');
     } catch (e) {
       console.log('No loading indicators found or timeout - proceeding');
     }
     
-    // Additional wait for animations and dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Get page title
     const title = await page.title();
     
-    // Extract colors from all elements
+    // Extract colors
     console.log('Extracting colors...');
     const colors = await page.evaluate(() => {
       const colorSet = new Set();
       const elements = document.querySelectorAll('*');
       
-      // Helper to convert rgb to hex
       const rgbToHex = (rgb) => {
         const result = rgb.match(/\d+/g);
         if (!result || result.length < 3) return null;
@@ -171,7 +169,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
         const g = parseInt(result[1]);
         const b = parseInt(result[2]);
         
-        // Skip transparent and very light colors (likely white backgrounds)
         if (result.length > 3 && parseFloat(result[3]) < 0.1) return null;
         if (r > 250 && g > 250 && b > 250) return null;
         
@@ -183,21 +180,18 @@ export async function scrapeWebsite(url, categories = ['Other']) {
       elements.forEach(el => {
         const styles = window.getComputedStyle(el);
         
-        // Get background color
         const bgColor = styles.backgroundColor;
         if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)') {
           const hex = rgbToHex(bgColor);
           if (hex) colorSet.add(hex);
         }
         
-        // Get text color
         const textColor = styles.color;
         if (textColor) {
           const hex = rgbToHex(textColor);
           if (hex) colorSet.add(hex);
         }
         
-        // Get border color
         const borderColor = styles.borderColor;
         if (borderColor && borderColor !== 'rgba(0, 0, 0, 0)') {
           const hex = rgbToHex(borderColor);
@@ -215,7 +209,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
       const fontUsageCount = {};
       const elements = document.querySelectorAll('*');
       
-      // Get body font as main font
       const bodyFont = window.getComputedStyle(document.body).fontFamily;
       let mainFont = 'Unknown';
       
@@ -229,7 +222,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
       elements.forEach(el => {
         const fontFamily = window.getComputedStyle(el).fontFamily;
         if (fontFamily) {
-          // Split font families and clean them
           fontFamily.split(',').forEach(font => {
             const cleaned = font.trim().replace(/['"]/g, '');
             if (cleaned && !cleaned.includes('system') && cleaned !== 'serif' && cleaned !== 'sans-serif') {
@@ -240,7 +232,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
         }
       });
       
-      // Find most used font if body font is generic
       if (mainFont === 'Unknown' && Object.keys(fontUsageCount).length > 0) {
         mainFont = Object.entries(fontUsageCount)
           .sort((a, b) => b[1] - a[1])[0][0];
@@ -255,7 +246,6 @@ export async function scrapeWebsite(url, categories = ['Other']) {
     // Take screenshot
     console.log('Taking screenshot...');
     
-    // Wait for page to stabilize (no more DOM changes)
     try {
       let previousHeight = await page.evaluate(() => document.body.scrollHeight);
       let stableCount = 0;
@@ -280,22 +270,24 @@ export async function scrapeWebsite(url, categories = ['Other']) {
       console.log('Page stability check skipped');
     }
     
-    // Final wait before screenshot
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    const screenshotDir = path.join(process.cwd(), 'screenshots');
-    await fs.mkdir(screenshotDir, { recursive: true });
-    
-    const screenshotId = nanoid(10);
-    const screenshotPath = path.join(screenshotDir, `${screenshotId}.png`);
-    
-    await page.screenshot({ 
-      path: screenshotPath,
-      fullPage: false,
-      type: 'png'
+    const screenshotBuffer = await page.screenshot({ 
+      type: 'png',
+      fullPage: false
     });
     
     await browser.close();
+    
+    // Upload to Vercel Blob
+    console.log('Uploading screenshot to Vercel Blob...');
+    const screenshotId = nanoid(10);
+    const blob = await put(`screenshots/${screenshotId}.png`, screenshotBuffer, {
+      access: 'public',
+      contentType: 'image/png',
+    });
+    
+    console.log('Screenshot uploaded:', blob.url);
     
     // Categorize colors
     const categorizedColors = categorizeColors(colors.slice(0, 12));
@@ -305,11 +297,11 @@ export async function scrapeWebsite(url, categories = ['Other']) {
       id: nanoid(),
       url,
       title: title || 'Untitled',
-      heroImage: `/screenshots/${screenshotId}.png`,
-      colors: colors.slice(0, 12), // Limit to 12 colors
+      heroImage: blob.url,
+      colors: colors.slice(0, 12),
       colorCategories: categorizedColors,
       mainFont: fontData.mainFont,
-      fonts: fontData.allFonts.slice(0, 8), // Limit to 8 fonts
+      fonts: fontData.allFonts.slice(0, 8),
       categories: categories && categories.length > 0 ? categories : ['Other'],
       category: categories && categories.length > 0 ? categories[0] : 'Other',
       savedAt: new Date().toISOString(),

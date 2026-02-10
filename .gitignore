@@ -22,3 +22,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables
+.env
+.env.local
+.env.production.local
+
+# Database and screenshots (local development only)
+database.json
+screenshots/
+server/database.json
+server/screenshots/
+
+# Vercel
+.vercel
