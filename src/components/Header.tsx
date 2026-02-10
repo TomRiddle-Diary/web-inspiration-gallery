@@ -21,7 +21,7 @@ const CATEGORIES = [
   'Other'
 ];
 
-function Header({ onAddWebsite, isAdding, projectId }: HeaderProps) {
+function Header({ onAddWebsite, isAdding, projectId: _projectId }: HeaderProps) {
   const [url, setUrl] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
