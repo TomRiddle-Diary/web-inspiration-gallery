@@ -1,0 +1,9 @@
+# Server files
+node_modules/
+database.json
+screenshots/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
