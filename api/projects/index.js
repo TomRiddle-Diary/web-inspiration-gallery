@@ -1,4 +1,4 @@
-import { getAllProjects, createProject } from '../../server/database-supabase.js';
+import { getAllProjects, createProject } from '../../lib/database.js';
 
 export default async function handler(req, res) {
   // Enable CORS

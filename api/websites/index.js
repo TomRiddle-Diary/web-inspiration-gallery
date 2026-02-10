@@ -1,5 +1,5 @@
-import { getAllWebsites, saveWebsite } from '../../server/database-supabase.js';
-import { scrapeWebsite } from '../../server/scraper-vercel.js';
+import { getAllWebsites, saveWebsite } from '../../lib/database.js';
+import { scrapeWebsite } from '../../lib/scraper.js';
 
 export const config = {
   maxDuration: 60, // Maximum execution time in seconds (Vercel Pro feature)
